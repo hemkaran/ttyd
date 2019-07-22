@@ -35,6 +35,11 @@ position: absolute;
 
     dispose(): void {}
 
+    hideOverlay(): void {
+        const { overlayNode } = this;
+        overlayNode.style.opacity = '0';
+    }
+
     showOverlay(msg: string, timeout?: number): void {
         const { terminal, overlayNode } = this;
 

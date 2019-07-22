@@ -6,12 +6,17 @@ body {
   overflow: hidden;
 }
 
-#terminal-container {
-  width: auto;
+.container {
+  display: flex;
+  flex-flow: column;
   height: 100%;
-  margin: 0 auto;
+}
+
+#terminal-container {
+  margin: 10px;
   padding: 0;
-  background-color: #2b2b2b;
+  flex-grow: 1;
+  background-color: #000;
   .terminal {
     padding: 5px;
   }

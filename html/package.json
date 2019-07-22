@@ -11,7 +11,7 @@
   "license": "MIT",
   "scripts": {
     "prestart": "gulp clean",
-    "start": "webpack-dev-server",
+    "start": "webpack-dev-server --host 0.0.0.0",
     "build": "NODE_ENV=production webpack && gulp",
     "check": "gts check",
     "fix": "gts fix"
@@ -63,7 +63,6 @@
     "preact": "^8.4.2",
     "xterm": "^3.14.5",
     "xterm-addon-fit": "^0.1.0-beta1",
-    "xterm-addon-web-links": "^0.1.0-beta10",
-    "zmodem.js": "^0.1.9"
+    "xterm-addon-web-links": "^0.1.0-beta10"
   }
 }

@@ -1,4 +1,3 @@
-import { bind } from 'decko';
 import * as backoff from 'backoff';
 import { Component, h } from 'preact';
 import { ITerminalOptions, Terminal } from 'xterm';
@@ -6,13 +5,13 @@ import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 
 import { OverlayAddon } from './overlay';
-import { ZmodemAddon } from '../zmodem';
 
 import 'xterm/dist/xterm.css';
 
 export interface WindowExtended extends Window {
     term: Terminal;
     tty_auth_token?: string;
+    thisInstance?: object;
 }
 declare let window: WindowExtended;
 
@@ -40,12 +39,12 @@ export class Xterm extends Component<Props> {
     private terminal: Terminal;
     private fitAddon: FitAddon;
     private overlayAddon: OverlayAddon;
-    private zmodemAddon: ZmodemAddon;
     private socket: WebSocket;
     private title: string;
     private resizeTimeout: number;
     private backoff: backoff.Backoff;
     private backoffLock = false;
+    private webSocketUrl: string;
 
     constructor(props) {
         super(props);
@@ -66,10 +65,12 @@ export class Xterm extends Component<Props> {
             console.log(`[ttyd] will attempt to reconnect websocket in ${delay}ms`);
             this.backoffLock = true;
         });
+
+        this.webSocketUrl = props.url;
     }
 
     componentDidMount() {
-        this.openTerminal();
+        this.setupTerminal();
     }
 
     componentWillUnmount() {
@@ -80,57 +81,60 @@ export class Xterm extends Component<Props> {
         window.removeEventListener('beforeunload', this.onWindowUnload);
     }
 
+    switchWebsocket = () => {
+        this.socket.close();
+        //this.terminal.dispose();
+        if (this.webSocketUrl === 'ws://192.168.2.137:9000/ws') {
+            this.webSocketUrl = this.props.url;
+        } else {
+            this.webSocketUrl = 'ws://192.168.2.137:9000/ws';
+        }
+        this.openTerminal();
+    };
+
     render({ id }: Props) {
         return (
-            <div id={id} ref={c => (this.container = c)}>
-                <ZmodemAddon ref={c => (this.zmodemAddon = c)} sender={this.sendData} />
+            <div>
+                <button onClick={this.switchWebsocket}>Switch Websockets</button>
+                <div id={id} ref={c => (this.container = c)}/>
             </div>
         );
     }
 
-    @bind
-    private sendData(data: ArrayLike<number>) {
+    sendData = (data: ArrayLike<number>) => {
         const { socket } = this;
         const payload = new Uint8Array(data.length + 1);
         payload[0] = Command.INPUT.charCodeAt(0);
         payload.set(data, 1);
         socket.send(payload);
-    }
+    };
 
-    @bind
-    private onWindowResize() {
+    onWindowResize = () => {
+        console.log('Window resizing');
         const { fitAddon } = this;
         clearTimeout(this.resizeTimeout);
         this.resizeTimeout = setTimeout(() => fitAddon.fit(), 250) as any;
-    }
+    };
 
-    private onWindowUnload(event: BeforeUnloadEvent): string {
+    onWindowUnload (event: BeforeUnloadEvent): string {
         const message = 'Close terminal? this will also terminate the command.';
         event.returnValue = message;
         return message;
     }
 
-    @bind
-    private openTerminal() {
+    setupTerminal = () => {
         if (this.terminal) {
             this.terminal.dispose();
         }
 
-        this.socket = new WebSocket(this.props.url, ['tty']);
         this.terminal = new Terminal(this.props.options);
-        const { socket, terminal, container, fitAddon, overlayAddon } = this;
+        const { terminal, container, fitAddon, overlayAddon } = this;
         window.term = terminal;
-
-        socket.binaryType = 'arraybuffer';
-        socket.onopen = this.onSocketOpen;
-        socket.onmessage = this.onSocketData;
-        socket.onclose = this.onSocketClose;
-        socket.onerror = this.onSocketError;
+        window.thisInstance = this;
 
         terminal.loadAddon(fitAddon);
         terminal.loadAddon(overlayAddon);
         terminal.loadAddon(new WebLinksAddon());
-        terminal.loadAddon(this.zmodemAddon);
 
         terminal.onTitleChange(data => {
             if (data && data !== '') {
@@ -147,65 +151,87 @@ export class Xterm extends Component<Props> {
             });
         }
         terminal.open(container);
-        terminal.focus();
+        this.openTerminal();
 
         window.addEventListener('resize', this.onWindowResize);
         window.addEventListener('beforeunload', this.onWindowUnload);
+    };
+
+    openTerminal() {
+        console.log('Re-opening terminal');
+        const isSocketClosed = !this.socket || this.socket.readyState > 1;
+        if (isSocketClosed) {
+            this.socket = new WebSocket(this.webSocketUrl, ['tty']);
+        }
+
+        const { socket, terminal } = this;
+        if (isSocketClosed) {
+            socket.binaryType = 'arraybuffer';
+            socket.onopen = this.onSocketOpen;
+            socket.onmessage = this.onSocketData;
+            socket.onclose = this.onSocketClose;
+            socket.onerror = this.onSocketError;
+        }
+
+        //terminal.clear();
+        terminal.focus();
     }
 
-    @bind
-    private reconnect() {
+    reconnect = () => {
         if (!this.backoffLock) {
             this.backoff.backoff();
         }
-    }
+    };
 
-    @bind
-    private onSocketOpen() {
+    onSocketOpen = () => {
         console.log('[ttyd] Websocket connection opened');
         this.backoff.reset();
 
-        const { socket, textEncoder, fitAddon } = this;
+        const { socket, textEncoder, fitAddon, overlayAddon } = this;
+        overlayAddon.hideOverlay();
         const authToken = window.tty_auth_token;
 
         socket.send(textEncoder.encode(JSON.stringify({ AuthToken: authToken })));
         fitAddon.fit();
-    }
+    };
 
-    @bind
-    private onSocketClose(event: CloseEvent) {
+    onSocketClose = (event: CloseEvent) => {
         console.log(`[ttyd] websocket connection closed with code: ${event.code}`);
 
         const { overlayAddon } = this;
-        overlayAddon.showOverlay('Connection Closed', null);
-        window.removeEventListener('beforeunload', this.onWindowUnload);
+        if (event.code !== 1005) {
+            overlayAddon.showOverlay('Connection Closed', null);
+            window.removeEventListener('beforeunload', this.onWindowUnload);
+        }
 
         // 1008: POLICY_VIOLATION - Auth failure
         if (event.code === 1008) {
             window.location.reload();
         }
 
-        // 1000: CLOSE_NORMAL
-        if (event.code !== 1000) {
+        if (event.code !== 1005) {
             this.reconnect();
         }
-    }
+    };
 
-    @bind
-    private onSocketError() {
+    onSocketError = () => {
         this.reconnect();
-    }
+    };
 
-    @bind
-    private onSocketData(event: MessageEvent) {
-        const { terminal, textDecoder, zmodemAddon } = this;
+    onSocketData = (event: MessageEvent) => {
+        const { terminal, textDecoder } = this;
         const rawData = event.data as ArrayBuffer;
         const cmd = String.fromCharCode(new Uint8Array(rawData)[0]);
         const data = rawData.slice(1);
 
         switch (cmd) {
             case Command.OUTPUT:
-                zmodemAddon.consume(data);
+                let str = '';
+                for(let i = 0; i<event.data.byteLength; i++) {
+                    str = str + String.fromCharCode(new Uint8Array(event.data.slice(1))[i]);
+                }
+                //console.log('Writing terminal ============ \n' + str + '\n ===============');
+                terminal.writeUtf8(new Uint8Array(data));
                 break;
             case Command.SET_WINDOW_TITLE:
                 this.title = textDecoder.decode(data);
@@ -222,10 +248,9 @@ export class Xterm extends Component<Props> {
                 console.warn(`[ttyd] unknown command: ${cmd}`);
                 break;
         }
-    }
+    };
 
-    @bind
-    private onTerminalResize(size: { cols: number; rows: number }) {
+    onTerminalResize = (size: { cols: number; rows: number }) => {
         const { overlayAddon, socket, textEncoder } = this;
         if (socket.readyState === WebSocket.OPEN) {
             const msg = JSON.stringify({ columns: size.cols, rows: size.rows });
@@ -234,13 +259,18 @@ export class Xterm extends Component<Props> {
         setTimeout(() => {
             overlayAddon.showOverlay(`${size.cols}x${size.rows}`);
         }, 500);
-    }
+    };
 
-    @bind
-    private onTerminalData(data: string) {
+    onTerminalData = (data: string) => {
         const { socket, textEncoder } = this;
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(textEncoder.encode(Command.INPUT + data));
         }
+    };
+
+    writeToTerminal(data: string) {
+        data = data + '\n\r';
+        //this.terminal.write(data);
+        this.onTerminalData(data);
     }
 }

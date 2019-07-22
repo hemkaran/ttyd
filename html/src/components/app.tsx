@@ -8,15 +8,14 @@ if ((module as any).hot) {
     require('preact/debug');
 }
 
-const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-const wsPath = window.location.pathname.endsWith('/') ? 'ws' : '/ws';
-const url = [protocol, window.location.host, window.location.pathname, wsPath, window.location.search].join('');
+const url = 'ws://192.168.2.94:5000/ws';
+//const url = 'wss://serverrp9uqn5l-dev-machine-server-8000.ina.hackerrank.com/ws';
 const termOptions = {
     fontSize: 13,
     fontFamily: 'Menlo For Powerline,Consolas,Liberation Mono,Menlo,Courier,monospace',
     theme: {
-        foreground: '#d2d2d2',
-        background: '#2b2b2b',
+        foreground: '#ffffff',
+        background: '#000000',
         cursor: '#adadad',
         black: '#000000',
         red: '#d81e00',
@@ -39,6 +38,11 @@ const termOptions = {
 
 export class App extends Component {
     render() {
-        return <Xterm id="terminal-container" url={url} options={termOptions} />;
+        return (
+            <div className="container">
+                <h1 className="heading">Terminal Here</h1>
+                <Xterm id="terminal-container" url={url} options={termOptions} />
+            </div>
+        );
     }
 }
