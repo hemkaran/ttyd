@@ -1,5 +1,4 @@
 import * as backoff from 'backoff';
-import { Component, h } from 'preact';
 import { ITerminalOptions, Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
@@ -30,12 +29,12 @@ interface Props {
     id: string;
     url: string;
     options: ITerminalOptions;
+    container: HTMLElement;
 }
 
-export class Xterm extends Component<Props> {
+export class Xterm {
     private textEncoder: TextEncoder;
     private textDecoder: TextDecoder;
-    private container: HTMLElement;
     private terminal: Terminal;
     private fitAddon: FitAddon;
     private overlayAddon: OverlayAddon;
@@ -45,10 +44,10 @@ export class Xterm extends Component<Props> {
     private backoff: backoff.Backoff;
     private backoffLock = false;
     private webSocketUrl: string;
+    private props: Props;
 
     constructor(props) {
-        super(props);
-
+        this.props = props;
         this.textEncoder = new TextEncoder();
         this.textDecoder = new TextDecoder();
         this.fitAddon = new FitAddon();
@@ -67,68 +66,22 @@ export class Xterm extends Component<Props> {
         });
 
         this.webSocketUrl = props.url;
-    }
-
-    componentDidMount() {
         this.setupTerminal();
     }
 
-    componentWillUnmount() {
-        this.socket.close();
-        this.terminal.dispose();
-
-        window.removeEventListener('resize', this.onWindowResize);
-        window.removeEventListener('beforeunload', this.onWindowUnload);
+    writeToTerminal(data: string) {
+        data = data + '\n\r';
+        this.onTerminalData(data);
     }
 
-    switchWebsocket = () => {
-        this.socket.close();
-        //this.terminal.dispose();
-        if (this.webSocketUrl === 'ws://192.168.2.137:9000/ws') {
-            this.webSocketUrl = this.props.url;
-        } else {
-            this.webSocketUrl = 'ws://192.168.2.137:9000/ws';
-        }
-        this.openTerminal();
-    };
-
-    render({ id }: Props) {
-        return (
-            <div>
-                <button onClick={this.switchWebsocket}>Switch Websockets</button>
-                <div id={id} ref={c => (this.container = c)}/>
-            </div>
-        );
-    }
-
-    sendData = (data: ArrayLike<number>) => {
-        const { socket } = this;
-        const payload = new Uint8Array(data.length + 1);
-        payload[0] = Command.INPUT.charCodeAt(0);
-        payload.set(data, 1);
-        socket.send(payload);
-    };
-
-    onWindowResize = () => {
-        console.log('Window resizing');
-        const { fitAddon } = this;
-        clearTimeout(this.resizeTimeout);
-        this.resizeTimeout = setTimeout(() => fitAddon.fit(), 250) as any;
-    };
-
-    onWindowUnload (event: BeforeUnloadEvent): string {
-        const message = 'Close terminal? this will also terminate the command.';
-        event.returnValue = message;
-        return message;
-    }
-
-    setupTerminal = () => {
+    setupTerminal() {
         if (this.terminal) {
             this.terminal.dispose();
         }
 
         this.terminal = new Terminal(this.props.options);
-        const { terminal, container, fitAddon, overlayAddon } = this;
+        const { terminal, fitAddon, overlayAddon } = this;
+        const { container } = this.props;
         window.term = terminal;
         window.thisInstance = this;
 
@@ -155,7 +108,7 @@ export class Xterm extends Component<Props> {
 
         window.addEventListener('resize', this.onWindowResize);
         window.addEventListener('beforeunload', this.onWindowUnload);
-    };
+    }
 
     openTerminal() {
         console.log('Re-opening terminal');
@@ -177,11 +130,46 @@ export class Xterm extends Component<Props> {
         terminal.focus();
     }
 
-    reconnect = () => {
+    reconnect() {
         if (!this.backoffLock) {
             this.backoff.backoff();
         }
+    }
+
+    dispose() {
+        this.socket.close();
+        this.terminal.dispose();
+
+        window.removeEventListener('resize', this.onWindowResize);
+        window.removeEventListener('beforeunload', this.onWindowUnload);
+    }
+
+    switchWebsocket(newSocketUrl: string) {
+        this.socket.close();
+        this.webSocketUrl = newSocketUrl;
+        this.openTerminal();
+    }
+
+    sendData = (data: ArrayLike<number>) => {
+        const { socket } = this;
+        const payload = new Uint8Array(data.length + 1);
+        payload[0] = Command.INPUT.charCodeAt(0);
+        payload.set(data, 1);
+        socket.send(payload);
     };
+
+    onWindowResize = () => {
+        console.log('Window resizing');
+        const { fitAddon } = this;
+        clearTimeout(this.resizeTimeout);
+        this.resizeTimeout = setTimeout(() => fitAddon.fit(), 250) as any;
+    };
+
+    onWindowUnload (event: BeforeUnloadEvent): string {
+        const message = 'Close terminal? this will also terminate the command.';
+        event.returnValue = message;
+        return message;
+    }
 
     onSocketOpen = () => {
         console.log('[ttyd] Websocket connection opened');
@@ -230,7 +218,6 @@ export class Xterm extends Component<Props> {
                 for(let i = 0; i<event.data.byteLength; i++) {
                     str = str + String.fromCharCode(new Uint8Array(event.data.slice(1))[i]);
                 }
-                //console.log('Writing terminal ============ \n' + str + '\n ===============');
                 terminal.writeUtf8(new Uint8Array(data));
                 break;
             case Command.SET_WINDOW_TITLE:
@@ -267,10 +254,4 @@ export class Xterm extends Component<Props> {
             socket.send(textEncoder.encode(Command.INPUT + data));
         }
     };
-
-    writeToTerminal(data: string) {
-        data = data + '\n\r';
-        //this.terminal.write(data);
-        this.onTerminalData(data);
-    }
 }

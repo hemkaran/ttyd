@@ -8,7 +8,8 @@ if ((module as any).hot) {
     require('preact/debug');
 }
 
-const url = 'ws://192.168.2.94:5000/ws';
+const url = 'ws://192.168.2.143:5000/socket.io/?EIO=3&transport=websocket';
+const url2 = 'ws://localhost:7681/ws';
 //const url = 'wss://serverrp9uqn5l-dev-machine-server-8000.ina.hackerrank.com/ws';
 const termOptions = {
     fontSize: 13,
@@ -37,11 +38,34 @@ const termOptions = {
 } as ITerminalOptions;
 
 export class App extends Component {
+    private xterm: Xterm;
+    private webSocketUrl: string;
+
+    componentDidMount(): void {
+        this.webSocketUrl = url;
+        const container = document.querySelector('#terminal-container');
+        this.xterm = new Xterm({
+            url,
+            options: termOptions,
+            container,
+        });
+    }
+
+    switchWebsocket = () => {
+        if (this.webSocketUrl === url2) {
+            this.webSocketUrl = url;
+        } else {
+            this.webSocketUrl = url2;
+        }
+        this.xterm.switchWebsocket(this.webSocketUrl);
+    };
+
     render() {
         return (
             <div className="container">
                 <h1 className="heading">Terminal Here</h1>
-                <Xterm id="terminal-container" url={url} options={termOptions} />
+                <button onClick={this.switchWebsocket}>Switch Websockets</button>
+                <div id="terminal-container" />
             </div>
         );
     }
